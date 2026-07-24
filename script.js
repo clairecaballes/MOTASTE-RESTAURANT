@@ -918,8 +918,8 @@ const menuData = {
 };
 
 const specialFoods = [
-    { name: 'Special Batchoy', price: 80, image: 'frontimg/img1.jpg' },
-    { name: 'Tapsilog', price: 90, image: 'frontimg/img2.jpg' },
+    { name: 'Special Batchoy', price: 80, image: 'img1.jpg' },
+    { name: 'Tapsilog', price: 90, image: 'img2.jpg' },
     { name: 'Combo Meal 2', price: 110, image: 'frontimg/img3.jpg' },
     { name: 'Overload Breakfast', price: 180, image: 'frontimg/img4.jpg' },
     { name: 'Ramen batchoy overload', price: 80, image: 'frontimg/img1.jpg' },
