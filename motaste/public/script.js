@@ -348,14 +348,43 @@ function storeSavedAccounts(list) {
     } catch (e) {}
 }
 
-let accounts = (function() {
-    const saved = getSavedAccounts();
-    if (Array.isArray(saved) && saved.length) return saved;
-    return [
-        { name: 'Cashier One', role: 'Cashier', email: 'cashier@motaste.com', password: 'cashier123' },
-        { name: 'Inventory One', role: 'Inventory Manager', email: 'inventory@motaste.com', password: 'inventory123' }
-    ];
-})();
+let accounts = [];
+
+function loadAccountsFromServer() {
+    return fetch('/api/list_staff.php')
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.staff) {
+                function normalizeRole(r, email) {
+                    r = (r || '').toString().toLowerCase();
+                    if (r.includes('admin')) return 'Admin';
+                    if (r.includes('cashier')) return 'Cashier';
+                    if (r.includes('inventory')) return 'Inventory Manager';
+                    if (email && email.includes('cashier')) return 'Cashier';
+                    if (email && email.includes('inventory')) return 'Inventory Manager';
+                    return r ? (r.charAt(0).toUpperCase() + r.slice(1)) : '';
+                }
+                accounts = data.staff.map(s => ({ name: s.full_name, role: normalizeRole(s.role, s.email), email: s.email, password: '' }));
+                storeSavedAccounts(accounts);
+                renderAccounts();
+            }
+        })
+        .catch(() => {
+            // fallback to saved local accounts
+            const saved = getSavedAccounts();
+            if (Array.isArray(saved) && saved.length) {
+                accounts = saved;
+                renderAccounts();
+            } else {
+                // default demo accounts
+                accounts = [
+                    { name: 'Cashier One', role: 'Cashier', email: 'cashier@motaste.com', password: 'cashier123' },
+                    { name: 'Inventory One', role: 'Inventory Manager', email: 'inventory@motaste.com', password: 'inventory123' }
+                ];
+                renderAccounts();
+            }
+        });
+}
 
 function renderAccounts() {
     if (!accountList) return;
@@ -510,12 +539,9 @@ function renderDetailChart(container, chartData, title) {
     const xStep = pointCount > 1 ? chartWidth / (pointCount - 1) : chartWidth;
 
     function formatChartValue(value) {
-            } else {
-                accounts.push(account);
         if (value >= 1000) {
-            storeSavedAccounts(accounts);
-            renderAccounts();
-            resetAccountForm();
+            const shortVal = value / 1000;
+            return `₱${shortVal.toFixed(shortVal % 1 === 0 ? 0 : 1)}k`;
         }
         return `₱${value.toLocaleString()}`;
     }
@@ -794,14 +820,19 @@ if (accountForm) {
             return;
         }
 
-        if (accountEditIndex !== null) {
-            accounts[accountEditIndex] = account;
-        } else {
-            accounts.push(account);
-        }
-
-        renderAccounts();
-        resetAccountForm();
+        // send to server to create account
+        fetch('/api/create_staff.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: account.name, role: account.role, email: account.email, password: account.password })
+        }).then(r => r.json()).then(resp => {
+            if (resp && resp.success) {
+                loadAccountsFromServer();
+                resetAccountForm();
+            } else {
+                alert('Create account failed: ' + (resp && resp.error ? resp.error : 'unknown'));
+            }
+        }).catch(e => { alert('Create account failed'); });
     });
 }
 
@@ -812,8 +843,19 @@ if (accountList) {
 
         const index = Number(button.dataset.index);
         if (button.classList.contains('delete-btn')) {
-            accounts.splice(index, 1);
-            renderAccounts();
+            const emailToDelete = accounts[index] ? accounts[index].email : null;
+            if (!emailToDelete) return;
+            fetch('/api/delete_staff.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: emailToDelete })
+            }).then(r => r.json()).then(resp => {
+                if (resp && resp.success) {
+                    loadAccountsFromServer();
+                } else {
+                    alert('Delete failed');
+                }
+            }).catch(e => alert('Delete failed'));
             return;
         }
 
@@ -2075,6 +2117,8 @@ function initOrders() {
     renderOrderNotifications();
     renderOverviewInventory();
     renderInventoryManagement();
+    // load staff accounts from server for account management/login
+    loadAccountsFromServer();
     updateLiveClock();
     setInterval(updateLiveClock, 1000);
 }
