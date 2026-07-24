@@ -190,7 +190,9 @@ roleButtons.forEach((button) => {
     button.addEventListener('click', () => selectRole(button.dataset.role));
 });
 
-if (staffForm) {
+function attachStaffLoginHandler() {
+    if (!staffForm) return;
+
     staffForm.addEventListener('submit', function (event) {
         if (!staffForm.checkValidity()) {
             staffForm.reportValidity();
@@ -202,7 +204,7 @@ if (staffForm) {
         const role = selectedRoleInput && selectedRoleInput.value
             ? selectedRoleInput.value
             : '';
-        const email = emailInput ? emailInput.value : '';
+        const email = emailInput ? emailInput.value.trim() : '';
         const password = passwordInput ? passwordInput.value : '';
         const remember = rememberCheckbox ? rememberCheckbox.checked : false;
 
@@ -252,6 +254,8 @@ if (staffForm) {
         setDashboardPanelState(false);
     });
 }
+
+document.addEventListener('DOMContentLoaded', attachStaffLoginHandler);
 
 if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
