@@ -18,6 +18,9 @@ $password = isset($_POST['password']) ? $_POST['password'] : '';
 $isValid = false;
 $loginRole = '';
 
+// Start session so we can set session on successful login
+if (session_status() === PHP_SESSION_NONE) session_start();
+
 if ($role && $email && $password) {
     $mysqli = new mysqli($host, $user, $pass, $db);
     if ($mysqli->connect_error) {
@@ -32,6 +35,13 @@ if ($role && $email && $password) {
         if (password_verify($password, $passwordHash) && strtolower($dbRole) === strtolower($role)) {
             $isValid = true;
             $loginRole = $dbRole;
+            // set session
+            $_SESSION['staff'] = [
+                'id' => $email,
+                'role' => $dbRole,
+                'name' => $fullName,
+                'email' => $email
+            ];
         }
     }
     $stmt->close();
@@ -85,15 +95,23 @@ if ($role && $email && $password) {
 </head>
 <body>
     <div class="result-card">
-        <?php if ($isValid): ?>
-            <h1>Login Successful</h1>
-            <p>Welcome back, <strong><?php echo $role; ?></strong>.</p>
-            <p>Your credentials were verified successfully.</p>
-        <?php else: ?>
-            <h1>Login Failed</h1>
-            <p>Invalid email, password, or role. Please check your credentials and try again.</p>
+        <?php if ($isValid):
+                // If request expects JSON (AJAX), return JSON; else redirect back to staff UI
+                $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+                if (strpos($accept, 'application/json') !== false || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['success' => true, 'role' => $loginRole, 'email' => $email]);
+                    exit;
+                } else {
+                    header('Location: staff.html');
+                    exit;
+                }
+            else:
+        ?>
+                <h1>Login Failed</h1>
+                <p>Invalid email, password, or role. Please check your credentials and try again.</p>
+                <a href="staff.html">Return to Login</a>
         <?php endif; ?>
-        <a href="staff.html">Return to Login</a>
     </div>
 </body>
 </html>

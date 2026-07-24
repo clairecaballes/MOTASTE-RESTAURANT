@@ -206,60 +206,39 @@ if (staffForm) {
             staffForm.reportValidity();
             return;
         }
-
         event.preventDefault();
-
-        const role = selectedRoleInput && selectedRoleInput.value
-            ? selectedRoleInput.value
-            : '';
-        const email = emailInput ? emailInput.value : '';
+        const role = selectedRoleInput && selectedRoleInput.value ? selectedRoleInput.value : '';
+        const email = emailInput ? emailInput.value.trim() : '';
         const password = passwordInput ? passwordInput.value : '';
         const remember = rememberCheckbox ? rememberCheckbox.checked : false;
 
-        if (!allowedRoles.includes(role) || !isValidStaffLogin(role, email, password)) {
-            setAuthButtonsVisible(false);
-            if (modalTitle) {
-                modalTitle.textContent = 'Invalid credentials';
+        // Send credentials to server for authoritative authentication
+        fetch('/login.php', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'same-origin',
+            body: `role=${encodeURIComponent(role)}&email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
+        }).then(r => r.json()).then(resp => {
+            if (resp && resp.success) {
+                if (remember) saveCredentialsForRole(role, email, password); else clearSavedCredentialsForRole(role);
+                if (modalTitle) modalTitle.textContent = `Logged in as ${role}`;
+                updateDashboardProfile();
+                if (loginFields) { loginFields.hidden = true; }
+                const staffBox = document.querySelector('.staff-box'); if (staffBox) staffBox.style.display = 'none';
+                if (staffLoginPage) staffLoginPage.hidden = true;
+                document.body.classList.add('auth');
+                updateAccountManagementAccess();
+                renderInventoryManagement();
+                setAuthButtonsVisible(true);
+                if (overviewSection) { showDashboardSection(overviewSection); renderOverviewAnalytics(); }
+                setDashboardPanelState(false);
+            } else {
+                setAuthButtonsVisible(false);
+                if (modalTitle) modalTitle.textContent = 'Invalid credentials';
             }
-            return;
-        }
-
-        if (remember) {
-            saveCredentialsForRole(role, email, password);
-        } else {
-            clearSavedCredentialsForRole(role);
-        }
-
-        if (modalTitle) {
-            modalTitle.textContent = `Logged in as ${role}`;
-        }
-
-        updateDashboardProfile();
-
-        if (loginFields) {
-            loginFields.hidden = true;
-        }
-
-        const staffBox = document.querySelector('.staff-box');
-        if (staffBox) {
-            staffBox.style.display = 'none';
-        }
-        if (staffLoginPage) {
-            staffLoginPage.hidden = true;
-        }
-
-        // mark page authenticated so CSS can reveal auth-only controls
-        document.body.classList.add('auth');
-        updateAccountManagementAccess();
-        renderInventoryManagement();
-        setAuthButtonsVisible(true);
-        // After login, show the Overview dashboard as the main page
-        if (overviewSection) {
-            showDashboardSection(overviewSection);
-            renderOverviewAnalytics();
-        }
-        // Ensure dashboard panel is closed (main content visible)
-        setDashboardPanelState(false);
+        }).catch(() => {
+            if (modalTitle) modalTitle.textContent = 'Login error';
+        });
     });
 }
 
@@ -2119,6 +2098,21 @@ function initOrders() {
     renderInventoryManagement();
     // load staff accounts from server for account management/login
     loadAccountsFromServer();
+    // check server session for existing login
+    fetch('/api/check_session.php', { credentials: 'same-origin' })
+        .then(r => r.json()).then(data => {
+            if (data && data.authenticated) {
+                // set UI as authenticated
+                if (selectedRoleInput) selectedRoleInput.value = (data.role || 'Admin');
+                if (emailInput) emailInput.value = (data.email || '');
+                document.body.classList.add('auth');
+                updateDashboardProfile();
+                updateAccountManagementAccess();
+                setAuthButtonsVisible(true);
+                renderInventoryManagement();
+                if (overviewSection) { showDashboardSection(overviewSection); renderOverviewAnalytics(); }
+            }
+        }).catch(() => {});
     updateLiveClock();
     setInterval(updateLiveClock, 1000);
 }
