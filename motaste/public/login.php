@@ -1,11 +1,12 @@
 <?php
 // Simple login handler for MOTASTE staff login.
-// This page checks the staff table in the motaste_db database.
+// This file can be used if you want to submit the login form to the server.
 
-$host = '127.0.0.1';
-$db = 'motaste_db';
-$user = 'root';
-$pass = '';
+$allowedRoles = [
+    'Admin' => ['admin@motaste.com' => 'admin123'],
+    'Cashier' => ['cashier@motaste.com' => 'cashier123'],
+    'Inventory Manager' => ['inventory@motaste.com' => 'inventory123'],
+];
 
 function sanitize($value) {
     return htmlspecialchars(trim($value), ENT_QUOTES, 'UTF-8');
@@ -13,53 +14,11 @@ function sanitize($value) {
 
 $role = isset($_POST['role']) ? sanitize($_POST['role']) : '';
 $email = isset($_POST['email']) ? sanitize($_POST['email']) : '';
-$password = isset($_POST['password']) ? $_POST['password'] : '';
+$password = isset($_POST['password']) ? sanitize($_POST['password']) : '';
 
 $isValid = false;
-$loginRole = '';
-
-// Start session so we can set session on successful login
-if (session_status() === PHP_SESSION_NONE) session_start();
-
-if ($role && $email && $password) {
-    $mysqli = new mysqli($host, $user, $pass, $db);
-    if ($mysqli->connect_error) {
-        die('Database connection failed: ' . $mysqli->connect_error);
-    }
-
-    $stmt = $mysqli->prepare('SELECT full_name, password_hash, role FROM staff WHERE email = ?');
-    $stmt->bind_param('s', $email);
-    $stmt->execute();
-    $stmt->bind_result($fullName, $passwordHash, $dbRole);
-    if ($stmt->fetch()) {
-        if (password_verify($password, $passwordHash) && strtolower($dbRole) === strtolower($role)) {
-            $isValid = true;
-            $loginRole = $dbRole;
-            // set session
-            $_SESSION['staff'] = [
-                'id' => $email,
-                'role' => $dbRole,
-                'name' => $fullName,
-                'email' => $email
-            ];
-        }
-    }
-    $stmt->close();
-    $mysqli->close();
-}
-
-$accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-$isJsonRequest = strpos($accept, 'application/json') !== false || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
-
-if ($isJsonRequest) {
-    header('Content-Type: application/json');
-    echo json_encode([
-        'success' => $isValid,
-        'role' => $isValid ? $loginRole : null,
-        'email' => $isValid ? $email : null,
-        'message' => $isValid ? 'Logged in' : 'Invalid credentials'
-    ]);
-    exit;
+if (isset($allowedRoles[$role]) && isset($allowedRoles[$role][$email])) {
+    $isValid = $allowedRoles[$role][$email] === $password;
 }
 ?>
 <!DOCTYPE html>
@@ -109,23 +68,15 @@ if ($isJsonRequest) {
 </head>
 <body>
     <div class="result-card">
-        <?php if ($isValid):
-                // If request expects JSON (AJAX), return JSON; else redirect back to staff UI
-                $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-                if (strpos($accept, 'application/json') !== false || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['success' => true, 'role' => $loginRole, 'email' => $email]);
-                    exit;
-                } else {
-                    header('Location: staff.html');
-                    exit;
-                }
-            else:
-        ?>
-                <h1>Login Failed</h1>
-                <p>Invalid email, password, or role. Please check your credentials and try again.</p>
-                <a href="staff.html">Return to Login</a>
+        <?php if ($isValid): ?>
+            <h1>Login Successful</h1>
+            <p>Welcome back, <strong><?php echo $role; ?></strong>.</p>
+            <p>Your credentials were verified successfully.</p>
+        <?php else: ?>
+            <h1>Login Failed</h1>
+            <p>Invalid email, password, or role. Please check your credentials and try again.</p>
         <?php endif; ?>
+        <a href="staff.html">Return to Login</a>
     </div>
 </body>
 </html>
