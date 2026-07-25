@@ -59,26 +59,16 @@ function loadSavedCredentialsForRole(role) {
 }
 
 function isValidStaffLogin(role, email, password) {
-    // First check persisted accounts from account management UI
+    const staffAccounts = [
+        { email: 'admin@motaste.com', password: 'admin123', role: 'Admin' },
+        { email: 'cashier@motaste.com', password: 'cashier123', role: 'Cashier' },
+        { email: 'inventory@motaste.com', password: 'inventory123', role: 'Inventory Manager' }
+    ];
+
     const normalizedRole = (role || '').trim();
     const normalizedEmail = (email || '').trim().toLowerCase();
-    try {
-        const saved = JSON.parse(localStorage.getItem('motasteAccounts') || 'null') || [];
-        if (Array.isArray(saved) && saved.length) {
-            const match = saved.some((account) => {
-                return (account.email || '').toLowerCase() === normalizedEmail
-                    && (account.password || '') === password
-                    && (account.role || '') === normalizedRole;
-            });
-            if (match) return true;
-        }
-    } catch (e) {
-        // ignore
-    }
 
-    // Fallback to a single built-in admin account if nothing persisted
-    const fallback = [ { email: 'admin@motaste.com', password: 'admin123', role: 'Admin' } ];
-    return fallback.some((account) => {
+    return staffAccounts.some((account) => {
         return account.email.toLowerCase() === normalizedEmail
             && account.password === password
             && account.role === normalizedRole;
@@ -200,47 +190,72 @@ roleButtons.forEach((button) => {
     button.addEventListener('click', () => selectRole(button.dataset.role));
 });
 
-if (staffForm) {
+function attachStaffLoginHandler() {
+    if (!staffForm) return;
+
     staffForm.addEventListener('submit', function (event) {
         if (!staffForm.checkValidity()) {
             staffForm.reportValidity();
             return;
         }
+
         event.preventDefault();
-        const role = selectedRoleInput && selectedRoleInput.value ? selectedRoleInput.value : '';
+
+        const role = selectedRoleInput && selectedRoleInput.value
+            ? selectedRoleInput.value
+            : '';
         const email = emailInput ? emailInput.value.trim() : '';
         const password = passwordInput ? passwordInput.value : '';
         const remember = rememberCheckbox ? rememberCheckbox.checked : false;
 
-        // Send credentials to server for authoritative authentication
-        fetch('/login.php', {
-            method: 'POST',
-            headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-            credentials: 'same-origin',
-            body: `role=${encodeURIComponent(role)}&email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
-        }).then(r => r.json()).then(resp => {
-            if (resp && resp.success) {
-                if (remember) saveCredentialsForRole(role, email, password); else clearSavedCredentialsForRole(role);
-                if (modalTitle) modalTitle.textContent = `Logged in as ${role}`;
-                updateDashboardProfile();
-                if (loginFields) { loginFields.hidden = true; }
-                const staffBox = document.querySelector('.staff-box'); if (staffBox) staffBox.style.display = 'none';
-                if (staffLoginPage) staffLoginPage.hidden = true;
-                document.body.classList.add('auth');
-                updateAccountManagementAccess();
-                renderInventoryManagement();
-                setAuthButtonsVisible(true);
-                if (overviewSection) { showDashboardSection(overviewSection); renderOverviewAnalytics(); }
-                setDashboardPanelState(false);
-            } else {
-                setAuthButtonsVisible(false);
-                if (modalTitle) modalTitle.textContent = 'Invalid credentials';
+        if (!allowedRoles.includes(role) || !isValidStaffLogin(role, email, password)) {
+            setAuthButtonsVisible(false);
+            if (modalTitle) {
+                modalTitle.textContent = 'Invalid credentials';
             }
-        }).catch(() => {
-            if (modalTitle) modalTitle.textContent = 'Login error';
-        });
+            return;
+        }
+
+        if (remember) {
+            saveCredentialsForRole(role, email, password);
+        } else {
+            clearSavedCredentialsForRole(role);
+        }
+
+        if (modalTitle) {
+            modalTitle.textContent = `Logged in as ${role}`;
+        }
+
+        updateDashboardProfile();
+
+        if (loginFields) {
+            loginFields.hidden = true;
+        }
+
+        const staffBox = document.querySelector('.staff-box');
+        if (staffBox) {
+            staffBox.style.display = 'none';
+        }
+        if (staffLoginPage) {
+            staffLoginPage.hidden = true;
+        }
+
+        // mark page authenticated so CSS can reveal auth-only controls
+        document.body.classList.add('auth');
+        updateAccountManagementAccess();
+        renderInventoryManagement();
+        setAuthButtonsVisible(true);
+        // After login, show the Overview dashboard as the main page
+        if (overviewSection) {
+            showDashboardSection(overviewSection);
+            renderOverviewAnalytics();
+        }
+        // Ensure dashboard panel is closed (main content visible)
+        setDashboardPanelState(false);
     });
 }
+
+document.addEventListener('DOMContentLoaded', attachStaffLoginHandler);
 
 if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
@@ -313,58 +328,10 @@ const accountRoleInput = document.getElementById('accountRole');
 const accountEmailInput = document.getElementById('accountEmail');
 const accountPasswordInput = document.getElementById('accountPassword');
 let accountEditIndex = null;
-let editingAccountId = null;
-function getSavedAccounts() {
-    try {
-        return JSON.parse(localStorage.getItem('motasteAccounts') || 'null') || null;
-    } catch (e) {
-        return null;
-    }
-}
-
-function storeSavedAccounts(list) {
-    try {
-        localStorage.setItem('motasteAccounts', JSON.stringify(list || []));
-    } catch (e) {}
-}
-
-let accounts = [];
-
-function loadAccountsFromServer() {
-    return fetch('/api/list_staff.php')
-        .then(r => r.json())
-        .then(data => {
-            if (data && data.staff) {
-                function normalizeRole(r, email) {
-                    r = (r || '').toString().toLowerCase();
-                    if (r.includes('admin')) return 'Admin';
-                    if (r.includes('cashier')) return 'Cashier';
-                    if (r.includes('inventory')) return 'Inventory Manager';
-                    if (email && email.includes('cashier')) return 'Cashier';
-                    if (email && email.includes('inventory')) return 'Inventory Manager';
-                    return r ? (r.charAt(0).toUpperCase() + r.slice(1)) : '';
-                }
-                accounts = data.staff.map(s => ({ id: s.id, name: s.full_name, role: normalizeRole(s.role, s.email), email: s.email, password: '' }));
-                storeSavedAccounts(accounts);
-                renderAccounts();
-            }
-        })
-        .catch(() => {
-            // fallback to saved local accounts
-            const saved = getSavedAccounts();
-            if (Array.isArray(saved) && saved.length) {
-                accounts = saved;
-                renderAccounts();
-            } else {
-                // default demo accounts
-                accounts = [
-                    { name: 'Cashier One', role: 'Cashier', email: 'cashier@motaste.com', password: 'cashier123' },
-                    { name: 'Inventory One', role: 'Inventory Manager', email: 'inventory@motaste.com', password: 'inventory123' }
-                ];
-                renderAccounts();
-            }
-        });
-}
+let accounts = [
+    { name: 'Cashier One', role: 'Cashier', email: 'cashier@motaste.com', password: 'cashier123' },
+    { name: 'Inventory One', role: 'Inventory Manager', email: 'inventory@motaste.com', password: 'inventory123' }
+];
 
 function renderAccounts() {
     if (!accountList) return;
@@ -389,7 +356,6 @@ function resetAccountForm() {
         accountForm.reset();
     }
     accountEditIndex = null;
-    editingAccountId = null;
 }
 
 if (accountManagementLink && accountManagementSection) {
@@ -724,6 +690,30 @@ const inventorySearchInput = document.getElementById('inventorySearchInput');
 const inventoryCategoryTabs = document.querySelectorAll('.inventory-category-tab');
 const inventoryAddFab = document.getElementById('inventoryAddFab');
 const inventoryModal = document.getElementById('inventoryModal');
+
+function setInventoryCategory(category) {
+    if (!category) return;
+    inventorySelectedCategory = category;
+    inventoryCategoryTabs.forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.category === category);
+    });
+    renderInventoryManagement();
+}
+
+if (inventoryCategoryTabs && inventoryCategoryTabs.length) {
+    inventoryCategoryTabs.forEach((button) => {
+        button.addEventListener('click', () => {
+            setInventoryCategory(button.dataset.category || 'all');
+        });
+    });
+}
+
+if (inventorySearchInput) {
+    inventorySearchInput.addEventListener('input', (event) => {
+        inventorySearchTerm = (event.target.value || '').trim();
+        renderInventoryManagement();
+    });
+}
 const inventoryModalCloseBtn = document.getElementById('inventoryModalCloseBtn');
 const inventoryModalTitle = document.getElementById('inventoryModalTitle');
 const inventoryAccessNote = document.getElementById('inventoryAccessNote');
@@ -894,29 +884,14 @@ if (accountForm) {
             return;
         }
 
-        const requestBody = {
-            name: account.name,
-            role: account.role,
-            email: account.email,
-            password: account.password,
-            currentEmail: accountEditIndex !== null ? (accounts[accountEditIndex] ? accounts[accountEditIndex].email : '') : '',
-            id: editingAccountId || 0
-        };
+        if (accountEditIndex !== null) {
+            accounts[accountEditIndex] = account;
+        } else {
+            accounts.push(account);
+        }
 
-        const endpoint = accountEditIndex !== null ? '/api/update_staff.php' : '/api/create_staff.php';
-
-        fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-        }).then(r => r.json()).then(resp => {
-            if (resp && resp.success) {
-                loadAccountsFromServer();
-                resetAccountForm();
-            } else {
-                alert((accountEditIndex !== null ? 'Update' : 'Create') + ' account failed: ' + (resp && resp.error ? resp.error : 'unknown'));
-            }
-        }).catch(() => { alert((accountEditIndex !== null ? 'Update' : 'Create') + ' account failed'); });
+        renderAccounts();
+        resetAccountForm();
     });
 }
 
@@ -927,19 +902,8 @@ if (accountList) {
 
         const index = Number(button.dataset.index);
         if (button.classList.contains('delete-btn')) {
-            const emailToDelete = accounts[index] ? accounts[index].email : null;
-            if (!emailToDelete) return;
-            fetch('/api/delete_staff.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: emailToDelete })
-            }).then(r => r.json()).then(resp => {
-                if (resp && resp.success) {
-                    loadAccountsFromServer();
-                } else {
-                    alert('Delete failed');
-                }
-            }).catch(e => alert('Delete failed'));
+            accounts.splice(index, 1);
+            renderAccounts();
             return;
         }
 
@@ -947,11 +911,10 @@ if (accountList) {
             const selectedAccount = accounts[index];
             if (selectedAccount) {
                 accountEditIndex = index;
-                editingAccountId = selectedAccount.id || 0;
                 if (accountNameInput) accountNameInput.value = selectedAccount.name;
                 if (accountRoleInput) accountRoleInput.value = selectedAccount.role;
                 if (accountEmailInput) accountEmailInput.value = selectedAccount.email;
-                if (accountPasswordInput) accountPasswordInput.value = selectedAccount.password || '';
+                if (accountPasswordInput) accountPasswordInput.value = selectedAccount.password;
             }
         }
     });
@@ -1226,9 +1189,6 @@ function resolveInventoryCategory(itemName) {
         if (match) return key;
     }
 
-    const specialMatch = specialFoods.some((food) => (food.name || '').toLowerCase() === normalizedName);
-    if (specialMatch) return 'specials';
-
     return 'specials';
 }
 
@@ -1449,7 +1409,9 @@ function decrementInventory(items) {
         const inventoryItem = getInventoryItem(item.name);
         if (!inventoryItem) return;
         inventoryItem.stock = Math.max(0, inventoryItem.stock - item.quantity);
-        inventoryItem.status = inventoryItem.stock > 0 ? 'In stock' : 'Out of stock';
+        if (inventoryItem.stock <= 5) {
+            inventoryItem.status = 'Low stock';
+        }
     });
     saveInventoryData();
 }
@@ -1470,10 +1432,10 @@ function renderOrderNotifications() {
 
     overviewOrderNotificationList.innerHTML = allOrders.map((order) => {
         const isCompleted = completedOrders.some((completed) => completed.id === order.id);
-        const orderItems = order.items.map((item) => `
+        const items = Array.isArray(order.items) ? order.items : [];
+        const orderItems = items.map((item) => `
                 <li>${item.name} x${item.quantity} — ${formatCurrency(item.price * item.quantity)}</li>
             `).join('');
-        const isAdmin = selectedRoleInput && selectedRoleInput.value === 'Admin';
         return `
             <article class="order-notification-card ${isCompleted ? 'completed' : ''}">
                 <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -1485,10 +1447,7 @@ function renderOrderNotifications() {
                 <ul>${orderItems}</ul>
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
                     <strong>Total: ${formatCurrency(order.total)}</strong>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        ${isCompleted ? '' : `<button type="button" class="order-complete-btn" data-order-id="${order.id}">Mark Complete</button>`}
-                        ${isAdmin ? `<button type="button" class="order-remove-btn" data-order-id="${order.id}">Remove Order</button>` : ''}
-                    </div>
+                    ${isCompleted ? '' : `<button type="button" class="order-complete-btn" data-order-id="${order.id}">Mark Complete</button>`}
                 </div>
             </article>
         `;
@@ -1498,6 +1457,7 @@ function renderOrderNotifications() {
 function renderInventoryList(container, items) {
     if (!container) return;
     if (!items || !items.length) {
+        // hide the inventory list entirely when there are no items
         container.innerHTML = '';
         return;
     }
@@ -1515,12 +1475,9 @@ function renderInventoryList(container, items) {
                 <tbody>
                     ${items.map((item) => `
                         <tr>
-                            <td>
-                                ${item.name}
-                                ${item.stock <= 0 ? `<img src="../../outofstock1.png" alt="Out of stock" class="inventory-out-of-stock-image">` : ''}
-                            </td>
+                            <td>${item.name}</td>
                             <td>${item.stock}</td>
-                            <td class="${item.stock <= 0 ? 'inventory-stock-low' : ''}">${item.status}</td>
+                            <td class="${item.stock <= 5 ? 'inventory-stock-low' : ''}">${item.status}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -1580,6 +1537,10 @@ function getFilteredInventoryItems() {
 
 function renderInventoryManagement() {
     const isAdmin = selectedRoleInput && selectedRoleInput.value === 'Admin';
+
+    if (!isAdmin) {
+        setInventoryModalVisible(false);
+    }
 
     if (inventoryAddFab) {
         inventoryAddFab.hidden = !isAdmin;
@@ -1905,38 +1866,27 @@ function renderSpecialFoods() {
     if (!specialFoodsList) return;
 
     specialFoodsList.innerHTML = specialFoods.map((item) => {
-        const inventoryItem = getInventoryItem(item.name);
-        const isOutOfStock = inventoryItem && inventoryItem.stock <= 0;
+        const imageSrc = item.image || 'img1.jpg';
         return `
-            <article class="special-food-card ${isOutOfStock ? 'is-out-of-stock' : ''}">
-                <img src="${item.image}" alt="${item.name}">
-                <div class="special-food-details">
-                    <h4>${item.name}</h4>
-                    <strong>${formatCurrency(item.price)}</strong>
-                    ${isOutOfStock ? `<img src="outofstock1.png" alt="Out of stock" class="menu-item-out-of-stock-image">` : ''}
-                </div>
-                <div class="special-food-cart-action">
-                    <button type="button" class="special-food-add" data-name="${item.name}" data-price="${item.price}" aria-label="Add ${item.name} to cart" ${isOutOfStock ? 'disabled' : ''}>
-                        <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
-                    </button>
-                    <span class="special-food-added-message" aria-live="polite"></span>
-                </div>
-            </article>
-        `;
+        <article class="special-food-card">
+            <img src="${imageSrc}" alt="${item.name}">
+            <div class="special-food-details">
+                <h4>${item.name}</h4>
+                <strong>${formatCurrency(item.price)}</strong>
+            </div>
+            <div class="special-food-cart-action">
+                <button type="button" class="special-food-add" data-name="${item.name}" data-price="${item.price}" aria-label="Add ${item.name} to cart">
+                    <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
+                </button>
+                <span class="special-food-added-message" aria-live="polite"></span>
+            </div>
+        </article>
+    `;
     }).join('');
 }
 
 function addToCart(item) {
     if (!item) return;
-
-    const inventoryItem = getInventoryItem(item.name);
-    if (inventoryItem && inventoryItem.stock <= 0) {
-        if (menuOrderMessage) {
-            menuOrderMessage.textContent = `${item.name} is out of stock.`;
-        }
-        return;
-    }
-
     const existing = cartItems.find((cartItem) => cartItem.name === item.name);
     if (existing) {
         existing.quantity += 1;
@@ -1995,20 +1945,17 @@ function renderPendingOrders() {
     }
 
     pendingOrdersList.innerHTML = pendingOrders.map((order, index) => {
-        const itemsHtml = order.items.map((item) => `<li>${item.name} x${item.quantity} — ${formatCurrency(item.price * item.quantity)}</li>`).join('');
-        const isAdmin = selectedRoleInput && selectedRoleInput.value === 'Admin';
+        const items = Array.isArray(order.items) ? order.items : [];
+        const itemsHtml = items.map((item) => `<li>${item.name} x${item.quantity} — ${formatCurrency(item.price * item.quantity)}</li>`).join('');
         return `
             <article class="pending-order-card">
                 <h4>Order #${order.orderNumber}</h4>
                 <p><strong>Submitted:</strong> ${new Date(order.timestamp).toLocaleString()}</p>
                 <p><strong>Payment:</strong> ${order.paymentMethod}</p>
                 <ul>${itemsHtml}</ul>
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
                     <strong>Total: ${formatCurrency(order.total)}</strong>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button type="button" class="order-complete-btn" data-order-index="${index}">Mark Complete</button>
-                        ${isAdmin ? `<button type="button" class="order-remove-btn" data-order-index="${index}">Remove Order</button>` : ''}
-                    </div>
+                    <button type="button" class="order-complete-btn" data-order-index="${index}">Mark Complete</button>
                 </div>
             </article>
         `;
@@ -2134,7 +2081,7 @@ function confirmOrder() {
         paymentMethod: selectedPaymentMethod,
         orderType: selectedOrderType
     };
-    // Add to local pending orders
+
     pendingOrders.unshift(order);
     decrementInventory(order.items);
     savePendingOrders();
@@ -2145,25 +2092,6 @@ function confirmOrder() {
         menuOrderMessage.textContent = 'Order received! Proceed with payment to complete transaction.';
     }
     openPaymentScreen(order);
-
-    // Send order to server API
-    try {
-        fetch('/api/create_order.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(order)
-        }).then((resp) => resp.json()).then((data) => {
-            if (data && data.success) {
-                console.log('Order saved to server, id=', data.orderId);
-            } else {
-                console.warn('Server order save failed', data);
-            }
-        }).catch((err) => {
-            console.error('Order POST error', err);
-        });
-    } catch (e) {
-        console.error('Order send failed', e);
-    }
 }
 
 function showMenuCategory(categoryId) {
@@ -2175,29 +2103,23 @@ function showMenuCategory(categoryId) {
 
     currentMenuCategoryId = categoryId;
     menuCategoryTitle.textContent = category.title;
-    menuItemsList.innerHTML = category.items.map((item) => {
-        const inventoryItem = getInventoryItem(item.name);
-        const isOutOfStock = inventoryItem && inventoryItem.stock <= 0;
-        const buttonDisabled = isOutOfStock ? 'disabled' : '';
-        return `
-            <article class="menu-item-card ${isOutOfStock ? 'is-out-of-stock' : ''}">
-                <div class="menu-item-main">
-                    <h4>${item.name}</h4>
-                    <p>${item.description}</p>
-                    <p class="menu-item-price">${item.price}</p>
-                    ${isOutOfStock ? `<img src="outofstock1.png" alt="Out of stock" class="menu-item-out-of-stock-image">` : ''}
+    menuItemsList.innerHTML = category.items.map((item) => `
+        <article class="menu-item-card">
+            <div class="menu-item-main">
+                <h4>${item.name}</h4>
+                <p>${item.description}</p>
+                <p class="menu-item-price">${item.price}</p>
+            </div>
+            <div class="menu-item-controls">
+                <div class="menu-item-qty-controls">
+                    <button type="button" class="menu-item-qty-btn" data-action="decrease" data-name="${item.name}" data-price="${parsePrice(item.price)}" aria-label="Decrease ${item.name} quantity">−</button>
+                    <span class="menu-item-qty">0</span>
+                    <button type="button" class="menu-item-qty-btn" data-action="increase" data-name="${item.name}" data-price="${parsePrice(item.price)}" aria-label="Increase ${item.name} quantity">+</button>
                 </div>
-                <div class="menu-item-controls">
-                    <div class="menu-item-qty-controls">
-                        <button type="button" class="menu-item-qty-btn" data-action="decrease" data-name="${item.name}" data-price="${parsePrice(item.price)}" aria-label="Decrease ${item.name} quantity">−</button>
-                        <span class="menu-item-qty">0</span>
-                        <button type="button" class="menu-item-qty-btn" data-action="increase" data-name="${item.name}" data-price="${parsePrice(item.price)}" aria-label="Increase ${item.name} quantity" ${buttonDisabled}>+</button>
-                    </div>
-                    <span class="menu-item-confirmation" aria-live="polite">${isOutOfStock ? 'Out of stock' : ''}</span>
-                </div>
-            </article>
-        `;
-    }).join('');
+                <span class="menu-item-confirmation" aria-live="polite"></span>
+            </div>
+        </article>
+    `).join('');
 
     menuCategories.hidden = true;
     menuCategoryScreen.classList.remove('hidden');
@@ -2361,7 +2283,7 @@ if (mobileMenuToggle && topNav) {
 if (specialFoodsList) {
     specialFoodsList.addEventListener('click', (event) => {
         const button = event.target.closest('.special-food-add');
-        if (!button || button.disabled) return;
+        if (!button) return;
 
         const card = button.closest('.special-food-card');
         if (card) {
@@ -2382,11 +2304,16 @@ if (specialFoodsList) {
     });
 }
 
+if (inventoryForm) {
+    inventoryForm.addEventListener('submit', saveInventoryItem);
+}
+
 if (inventoryItemsWrapper) {
     inventoryItemsWrapper.addEventListener('click', (event) => {
         const editButton = event.target.closest('.inventory-edit-btn');
         const saveButton = event.target.closest('.inventory-inline-save');
         const cancelButton = event.target.closest('.inventory-inline-cancel');
+        const deleteButton = event.target.closest('.inventory-inline-delete');
 
         if (editButton) {
             const itemName = editButton.dataset.itemName;
@@ -2402,45 +2329,18 @@ if (inventoryItemsWrapper) {
             return;
         }
 
-        const deleteButton = event.target.closest('.inventory-inline-delete');
+        if (cancelButton) {
+            inventoryEditItemName = null;
+            renderInventoryManagement();
+            return;
+        }
+
         if (deleteButton) {
             const itemName = deleteButton.dataset.itemName;
             deleteInventoryItem(itemName);
             return;
         }
-
-        if (cancelButton) {
-            inventoryEditItemName = null;
-            renderInventoryManagement();
-        }
     });
-}
-
-if (inventoryAddFab) {
-    inventoryAddFab.addEventListener('click', openInventoryModal);
-}
-
-if (inventoryModalCloseBtn) {
-    inventoryModalCloseBtn.addEventListener('click', closeInventoryModal);
-}
-
-if (inventorySearchInput) {
-    inventorySearchInput.addEventListener('input', (event) => {
-        inventorySearchTerm = event.target.value || '';
-        renderInventoryManagement();
-    });
-}
-
-inventoryCategoryTabs.forEach((tab) => {
-    tab.addEventListener('click', () => {
-        inventorySelectedCategory = tab.dataset.category || 'all';
-        inventoryCategoryTabs.forEach((button) => button.classList.toggle('active', button === tab));
-        renderInventoryManagement();
-    });
-});
-
-if (inventoryForm) {
-    inventoryForm.addEventListener('submit', saveInventoryItem);
 }
 
 if (menuCategories) {
@@ -2466,13 +2366,6 @@ if (menuCategoryScreen) {
         const currentQty = Number(qtyElement?.textContent || 0);
         const change = qtyButton.dataset.action === 'increase' ? 1 : -1;
         const nextQty = Math.max(0, currentQty + change);
-
-        if (qtyButton.disabled) {
-            if (confirmation) {
-                confirmation.textContent = 'Out of stock';
-            }
-            return;
-        }
 
         if (change > 0) {
             addToCart({ name, price });
@@ -2617,117 +2510,42 @@ if (dashboardPanel) {
 
 if (overviewOrderNotificationList) {
     overviewOrderNotificationList.addEventListener('click', (event) => {
-        const completeButton = event.target.closest('.order-complete-btn');
-        const removeButton = event.target.closest('.order-remove-btn');
-
-        if (completeButton) {
-            const orderId = completeButton.dataset.orderId;
-            const orderIndex = pendingOrders.findIndex((order) => order.id === Number(orderId));
-            if (orderIndex >= 0) {
-                const completedOrder = pendingOrders.splice(orderIndex, 1)[0];
-                ignorePendingOrder(completedOrder.orderNumber || completedOrder.id);
-                completedOrders.unshift(completedOrder);
-                recalculateSalesAnalytics();
-                savePendingOrders();
-                saveCompletedOrders();
-                renderOrderNotifications();
-                renderPendingOrders();
-                updateAnalyticsView();
-                renderOverviewAnalytics();
-            }
-            return;
-        }
-
-        if (removeButton) {
-            const orderId = removeButton.dataset.orderId;
-            const orderIndex = pendingOrders.findIndex((order) => order.id === Number(orderId));
-            if (orderIndex >= 0) {
-                const removedOrder = pendingOrders.splice(orderIndex, 1)[0];
-                ignorePendingOrder(removedOrder.orderNumber || removedOrder.id);
-                savePendingOrders();
-                renderOrderNotifications();
-                renderPendingOrders();
-            }
+        const button = event.target.closest('.order-complete-btn');
+        if (!button) return;
+        const orderId = button.dataset.orderId;
+        const orderIndex = pendingOrders.findIndex((order) => order.id === Number(orderId));
+        if (orderIndex >= 0) {
+            const completedOrder = pendingOrders.splice(orderIndex, 1)[0];
+            completedOrders.unshift(completedOrder);
+            recalculateSalesAnalytics();
+            savePendingOrders();
+            saveCompletedOrders();
+            renderOrderNotifications();
+            renderPendingOrders();
+            updateAnalyticsView();
+            renderOverviewAnalytics();
         }
     });
 }
 
 if (pendingOrdersList) {
     pendingOrdersList.addEventListener('click', (event) => {
-        const completeButton = event.target.closest('.order-complete-btn');
-        const removeButton = event.target.closest('.order-remove-btn');
-
-        if (completeButton) {
-            const index = Number(completeButton.dataset.orderIndex);
-            if (index >= 0 && index < pendingOrders.length) {
-                const completeOrder = pendingOrders.splice(index, 1)[0];
-                ignorePendingOrder(completeOrder.orderNumber || completeOrder.id);
-                completedOrders.unshift(completeOrder);
-                recalculateSalesAnalytics();
-                savePendingOrders();
-                saveCompletedOrders();
-                renderPendingOrders();
-                renderOrderNotifications();
-                updateAnalyticsView();
-                renderOverviewAnalytics();
-            }
-            return;
-        }
-
-        if (removeButton) {
-            const index = Number(removeButton.dataset.orderIndex);
-            if (index >= 0 && index < pendingOrders.length) {
-                const removedOrder = pendingOrders.splice(index, 1)[0];
-                ignorePendingOrder(removedOrder.orderNumber || removedOrder.id);
-                savePendingOrders();
-                renderPendingOrders();
-                renderOrderNotifications();
-            }
+        const button = event.target.closest('.order-complete-btn');
+        if (!button) return;
+        const index = Number(button.dataset.orderIndex);
+        if (index >= 0 && index < pendingOrders.length) {
+            const completeOrder = pendingOrders.splice(index, 1)[0];
+            ignorePendingOrder(completeOrder.orderNumber || completeOrder.id);
+            completedOrders.unshift(completeOrder);
+            recalculateSalesAnalytics();
+            savePendingOrders();
+            saveCompletedOrders();
+            renderPendingOrders();
+            renderOrderNotifications();
+            updateAnalyticsView();
+            renderOverviewAnalytics();
         }
     });
-}
-
-function fetchPendingFromServer() {
-    fetch('/api/get_pending_orders.php')
-        .then((r) => r.json())
-        .then((data) => {
-            if (data && data.orders) {
-                const existing = new Set();
-                pendingOrders.forEach((o) => {
-                    if (o.orderNumber) existing.add(String(o.orderNumber));
-                    if (o.id !== undefined && o.id !== null) existing.add(String(o.id));
-                });
-                data.orders.forEach((o) => {
-                    const orderNumber = o.order_number || o.orderNumber || '';
-                    const serverId = o.id !== undefined && o.id !== null ? String(o.id) : '';
-                    if (!orderNumber || existing.has(String(orderNumber)) || ignoredPendingOrderNumbers.has(String(orderNumber))) {
-                        return;
-                    }
-                    if (serverId && (existing.has(serverId) || ignoredPendingOrderNumbers.has(serverId))) {
-                        return;
-                    }
-                    pendingOrders.unshift({
-                        orderNumber: orderNumber,
-                        id: Number(o.id),
-                        timestamp: new Date(o.order_date).getTime(),
-                        items: o.items || [],
-                        total: parseFloat(o.total_amount) || 0,
-                        paymentMethod: o.payment_status || 'unpaid'
-                    });
-                        orderNumber: orderNumber,
-                        id: Number(o.id),
-                        timestamp: new Date(o.order_date).getTime(),
-                        items: o.items || [],
-                        total: parseFloat(o.total_amount) || 0,
-                        paymentMethod: o.payment_status || 'unpaid'
-                    });
-                });
-                savePendingOrders();
-                renderPendingOrders();
-                renderOrderNotifications();
-            }
-        })
-        .catch((e) => console.error('Fetch pending orders failed', e));
 }
 
 function initOrders() {
@@ -2735,38 +2553,19 @@ function initOrders() {
     loadPendingOrders();
     loadIgnoredPendingOrders();
     loadCompletedOrders();
-    recalculateSalesAnalytics();
+    loadCustomMenuData();
     initializeInventoryData();
+    recalculateSalesAnalytics();
     renderSpecialFoods();
     updateCartDisplay();
     renderPendingOrders();
     renderOrderNotifications();
     renderOverviewInventory();
     renderInventoryManagement();
-    // load staff accounts from server for account management/login
-    loadAccountsFromServer();
-    // check server session for existing login
-    fetch('/api/check_session.php', { credentials: 'same-origin' })
-        .then(r => r.json()).then(data => {
-            if (data && data.authenticated) {
-                // set UI as authenticated but keep the login page visible until the user explicitly opens the dashboard
-                if (selectedRoleInput) selectedRoleInput.value = (data.role || 'Admin');
-                if (emailInput) emailInput.value = (data.email || '');
-                document.body.classList.add('auth');
-                updateDashboardProfile();
-                updateAccountManagementAccess();
-                setAuthButtonsVisible(true);
-                renderInventoryManagement();
-                renderOverviewAnalytics();
-            }
-        }).catch(() => {});
+    updateAnalyticsView();
+    renderOverviewAnalytics();
     updateLiveClock();
     setInterval(updateLiveClock, 1000);
 }
 
 initOrders();
-
-// Poll server for new pending orders every 7 seconds
-setInterval(() => {
-    fetchPendingFromServer();
-}, 7000);

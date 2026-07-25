@@ -5,11 +5,14 @@
 body {
     margin: 0;
     font-family: Arial, sans-serif;
-    background: #0a0909;
+    background: #ffffff;
     overflow-x: hidden;
+    overflow-y: auto;
     width: 100%;
     max-width: 100%;
 }
+
+/* (Reverted: kept original behavior — no forced section hidden rule or image caps) */
 
 .top-bar {
     display: flex;
@@ -174,7 +177,7 @@ body.dashboard-panel-open .menu-btn {
     top: 0;
     left: 0;
     width: 320px;
-    height: 100vh;
+    max-height: 100vh;
     overflow-y: auto;
     opacity: 0;
     pointer-events: none;
@@ -243,16 +246,20 @@ body.dashboard-panel-open .menu-btn {
 
 .dashboard-panel a {
     display: block;
-    color: #fff;
+    color: #111;
     text-decoration: none;
     padding: 10px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+.dashboard-panel a:hover {
+    color: #000;
 }
 
 .dashboard-panel a.disabled {
-    color: #999;
+    color: #666;
     cursor: not-allowed;
-    opacity: 0.5;
+    opacity: 0.65;
 }
 
 .dashboard-panel .panel-close {
@@ -321,11 +328,6 @@ body.dashboard-panel-open .menu-btn {
     padding: 12px 14px;
     background: #f7f7f7;
     border-radius: 8px;
-    color: #111;
-}
-
-.account-list li span {
-    color: #111;
 }
 
 .account-list button {
@@ -369,19 +371,18 @@ body.dashboard-panel-open .menu-btn {
     background: transparent;
     cursor: pointer;
     font-weight: 600;
-    color: #666;
+    color: #111;
     border-bottom: 3px solid transparent;
     transition: all 0.2s ease;
 }
 
-.sales-tab-btn,
-.sales-tab-btn:hover,
-.sales-tab-btn.active {
-    color: #fff;
-    border-bottom-color: transparent;
+.sales-tab-btn:hover {
+    color: #000;
 }
+
 .sales-tab-btn.active {
-    border-bottom-color: #fff;
+    color: #000;
+    border-bottom-color: #111;
 }
 
 .sales-tab-content {
@@ -594,14 +595,63 @@ body.dashboard-panel-open .menu-btn {
     cursor: pointer;
 }
 
+.front-section {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+
+.front-section img {
+    width: 100%;
+    height: 90vh;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+    .front-section img {
+        height: auto;
+        object-fit: contain;
+    }
+}
+/* Button overlay */
+.about-btn {
+    position: absolute;
+    top: 63%;       /* move up/down */
+    left: 4.5%;      /* move left/right */
+    
+    padding: 12px 35px;
+    background: #ff8c00;
+    color: white;
+    text-decoration: none;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 30px;
+    transition: 0.3s ease;
+}
+
+.about-btn:hover {
+    background: rgb(18, 17, 17);
+    color: #ff8c00;
+    transform: translateY(-8px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+
+
+
+
 /* Slideshow styles */
 
 .info-section {
     background: #fff;
-    margin: 20px 24px;
+    margin: 20px 50px;
     padding: 24px;
     border-radius: 12px;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 5px 18px rgb(255, 255, 254);
+    font-color: #8a3d00;
 }
 
 /* MENU SECTION */
@@ -611,14 +661,38 @@ body.dashboard-panel-open .menu-btn {
     justify-content: center;
     align-items: center;
 
-    width: 91.4%;
+    width: 95%;
     min-height: 5vh;
-    padding: 40px;
+    padding: 10px;
 
-    background: linear-gradient(145deg, #ff8c00, #d84315);
+    background: linear-gradient( #0f0f0f, #1b1514);
     color: white;
+    font-color: black;
 }
 
+.menu-design {
+    width: 350px;
+    max-width: 100%;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.menu-image {
+    width: 690px;
+    height: 450px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.menu-design {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
 
 /* ABOUT SECTION */
 #about {
@@ -857,7 +931,14 @@ body.dashboard-panel-open .menu-btn {
     justify-content: space-between;
     gap: 12px;
 }
-.special-foods-heading h3 {
+.special-foods-heading h1 {
+    font-family: 'Allura', cursive;
+    font-size: 4rem;
+    font-weight: 400;
+    align-content: center;
+    text-align: center;
+    letter-spacing: 1px;
+    color: #8B0000;
     margin: 0;
 }
 .special-foods-heading span {
@@ -1557,42 +1638,27 @@ body.dashboard-panel-open .menu-btn {
     padding: 18px;
     display: grid;
     gap: 12px;
-    color: #111;
 }
 .pending-order-card h4 {
     margin: 0;
-    color: #111;
 }
 .pending-order-card ul {
     margin: 0;
     padding-left: 18px;
-    color: #111;
+    color: #333;
 }
-.pending-order-card p {
-    color: #111;
-}
-.order-complete-btn,
-.order-remove-btn {
+.order-complete-btn {
     border: none;
+    background: #111;
+    color: #fff;
     border-radius: 12px;
     padding: 10px 16px;
     font-weight: 700;
     cursor: pointer;
     transition: background 0.2s ease;
 }
-.order-complete-btn {
-    background: #111;
-    color: #fff;
-}
 .order-complete-btn:hover {
     background: #ff9800;
-}
-.order-remove-btn {
-    background: #b71c1c;
-    color: #fff;
-}
-.order-remove-btn:hover {
-    background: #d32f2f;
 }
 .hidden {
     display: none !important;
@@ -1937,13 +2003,15 @@ body.dashboard-panel-open .menu-btn {
     background: rgba(255,255,255,0.04);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    margin: 24px auto;
+    margin: 24px auto 0;
     padding: 24px;
     border-radius: 12px;
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
     width: calc(100% - 48px);
+    max-width: 900px;
     color: #fff;
     border: 1px solid rgba(255,255,255,0.04);
+    min-height: auto;
 }
 
 .overview-grid {
@@ -1982,7 +2050,6 @@ body.dashboard-panel-open .menu-btn {
 .overview-order-notification-box {
     display: grid;
     gap: 16px;
-    color: #fff;
 }
 
 .overview-notification-header {
@@ -2020,13 +2087,12 @@ body.dashboard-panel-open .menu-btn {
 .order-notification-card h4,
 .order-notification-card p {
     margin: 0;
-    color: #fff;
 }
 
 .order-notification-card ul {
     margin: 0;
     padding-left: 18px;
-    color: #fff;
+    color: #333;
 }
 
 .order-notification-footer {
@@ -2072,26 +2138,6 @@ body.dashboard-panel-open .menu-btn {
 .inventory-stock-low {
     color: #b02020;
     font-weight: 700;
-}
-
-.inventory-out-of-stock-image,
-.menu-item-out-of-stock-image {
-    display: inline-block;
-    width: 56px;
-    height: 56px;
-    object-fit: contain;
-    margin-top: 8px;
-    border-radius: 8px;
-}
-
-.menu-item-card.is-out-of-stock {
-    opacity: 0.92;
-}
-
-.menu-item-qty-btn:disabled,
-.special-food-add:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
     .inventory-admin-panel,
