@@ -690,6 +690,30 @@ const inventorySearchInput = document.getElementById('inventorySearchInput');
 const inventoryCategoryTabs = document.querySelectorAll('.inventory-category-tab');
 const inventoryAddFab = document.getElementById('inventoryAddFab');
 const inventoryModal = document.getElementById('inventoryModal');
+
+function setInventoryCategory(category) {
+    if (!category) return;
+    inventorySelectedCategory = category;
+    inventoryCategoryTabs.forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.category === category);
+    });
+    renderInventoryManagement();
+}
+
+if (inventoryCategoryTabs && inventoryCategoryTabs.length) {
+    inventoryCategoryTabs.forEach((button) => {
+        button.addEventListener('click', () => {
+            setInventoryCategory(button.dataset.category || 'all');
+        });
+    });
+}
+
+if (inventorySearchInput) {
+    inventorySearchInput.addEventListener('input', (event) => {
+        inventorySearchTerm = (event.target.value || '').trim();
+        renderInventoryManagement();
+    });
+}
 const inventoryModalCloseBtn = document.getElementById('inventoryModalCloseBtn');
 const inventoryModalTitle = document.getElementById('inventoryModalTitle');
 const inventoryAccessNote = document.getElementById('inventoryAccessNote');
