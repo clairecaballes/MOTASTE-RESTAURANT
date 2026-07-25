@@ -47,6 +47,20 @@ if ($role && $email && $password) {
     $stmt->close();
     $mysqli->close();
 }
+
+$accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+$isJsonRequest = strpos($accept, 'application/json') !== false || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
+
+if ($isJsonRequest) {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => $isValid,
+        'role' => $isValid ? $loginRole : null,
+        'email' => $isValid ? $email : null,
+        'message' => $isValid ? 'Logged in' : 'Invalid credentials'
+    ]);
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

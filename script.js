@@ -14,7 +14,7 @@ const dashboardPanel = document.getElementById('dashboardPanel');
 const closePanelBtn = document.getElementById('closePanelBtn');
 const dashboardUserName = document.getElementById('dashboardUserName');
 const dashboardUserEmail = document.getElementById('dashboardUserEmail');
-const staffForm = document.querySelector('.staff-box form');
+const staffForm = document.getElementById('staffLoginForm');
 const staffLoginPage = document.querySelector('.staff-login-page');
 const allowedRoles = ['Admin', 'Cashier', 'Inventory Manager'];
 
@@ -190,7 +190,9 @@ roleButtons.forEach((button) => {
     button.addEventListener('click', () => selectRole(button.dataset.role));
 });
 
-if (staffForm) {
+function attachStaffLoginHandler() {
+    if (!staffForm) return;
+
     staffForm.addEventListener('submit', function (event) {
         if (!staffForm.checkValidity()) {
             staffForm.reportValidity();
@@ -202,7 +204,7 @@ if (staffForm) {
         const role = selectedRoleInput && selectedRoleInput.value
             ? selectedRoleInput.value
             : '';
-        const email = emailInput ? emailInput.value : '';
+        const email = emailInput ? emailInput.value.trim() : '';
         const password = passwordInput ? passwordInput.value : '';
         const remember = rememberCheckbox ? rememberCheckbox.checked : false;
 
@@ -252,6 +254,8 @@ if (staffForm) {
         setDashboardPanelState(false);
     });
 }
+
+document.addEventListener('DOMContentLoaded', attachStaffLoginHandler);
 
 if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
@@ -433,6 +437,9 @@ function createMonthlyDailyData(base, drift) {
     });
 }
 
+const monthKeys = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 const monthlySalesByMonth = {
     jan: [],
     feb: [],
@@ -462,6 +469,49 @@ const weeklySalesByMonth = {
     nov: [],
     dec: []
 };
+
+function initializeAnalyticsBuckets() {
+    monthKeys.forEach((monthKey) => {
+        monthlySalesByMonth[monthKey] = Array.from({ length: 30 }, (_, index) => ({
+            label: `${index + 1}`,
+            value: 0
+        }));
+        weeklySalesByMonth[monthKey] = Array.from({ length: 5 }, (_, index) => ({
+            label: `W${index + 1}`,
+            value: 0
+        }));
+    });
+}
+
+function recalculateSalesAnalytics() {
+    initializeAnalyticsBuckets();
+
+    analyticsData.monthly.items = monthKeys.map((monthKey, index) => ({
+        label: monthLabels[index],
+        value: 0,
+        display: `₱0`
+    }));
+
+    completedOrders.forEach((order) => {
+        const orderDate = new Date(order.timestamp);
+        const monthIndex = orderDate.getMonth();
+        const monthKey = monthKeys[monthIndex];
+        const dayIndex = Math.min(29, Math.max(0, orderDate.getDate() - 1));
+        const weekIndex = Math.min(4, Math.floor(dayIndex / 7));
+        const orderTotal = Number(order.total || 0);
+
+        if (monthKey && monthlySalesByMonth[monthKey]) {
+            monthlySalesByMonth[monthKey][dayIndex].value += orderTotal;
+            weeklySalesByMonth[monthKey][weekIndex].value += orderTotal;
+            analyticsData.monthly.items[monthIndex].value += orderTotal;
+        }
+    });
+
+    analyticsData.monthly.items = analyticsData.monthly.items.map((item) => ({
+        ...item,
+        display: `₱${item.value.toLocaleString()}`
+    }));
+}
 
 function renderDetailChart(container, chartData, title) {
     if (!container) return;
@@ -554,7 +604,7 @@ function renderSalesList(container, items, firstCol = 'Period', secondCol = 'Sal
                 ${items.map((item) => `
                     <tr>
                         <td>${item.label}</td>
-                        <td>${item.display || `₱${item.value.toLocaleString()}`}</td>
+                        <td>${formatCurrency(item.value || 0)}</td>
                     </tr>
                 `).join('')}
             </tbody>
@@ -630,15 +680,63 @@ const overviewInventoryList = document.getElementById('overviewInventoryList');
 const inventoryAdminPanel = document.getElementById('inventoryAdminPanel');
 const inventoryForm = document.getElementById('inventoryForm');
 const inventoryNameInput = document.getElementById('inventoryNameInput');
+const inventoryCategoryInput = document.getElementById('inventoryCategoryInput');
 const inventoryPriceInput = document.getElementById('inventoryPriceInput');
 const inventoryStockInput = document.getElementById('inventoryStockInput');
 const inventoryStatusInput = document.getElementById('inventoryStatusInput');
 const inventorySaveBtn = document.getElementById('inventorySaveBtn');
 const inventoryItemsWrapper = document.getElementById('inventoryItemsWrapper');
+const inventorySearchInput = document.getElementById('inventorySearchInput');
+const inventoryCategoryTabs = document.querySelectorAll('.inventory-category-tab');
+const inventoryAddFab = document.getElementById('inventoryAddFab');
+const inventoryModal = document.getElementById('inventoryModal');
+const inventoryModalCloseBtn = document.getElementById('inventoryModalCloseBtn');
+const inventoryModalTitle = document.getElementById('inventoryModalTitle');
 const inventoryAccessNote = document.getElementById('inventoryAccessNote');
 const ordersLink = document.getElementById('ordersLink');
 const pendingOrdersList = document.getElementById('pendingOrdersList');
 const pendingOrdersSection = document.getElementById('pending-orders');
+
+function setInventoryModalVisible(isVisible) {
+    if (!inventoryModal) return;
+    inventoryModal.hidden = !isVisible;
+    inventoryModal.style.display = isVisible ? 'grid' : 'none';
+    inventoryModal.setAttribute('aria-hidden', String(!isVisible));
+    document.body.style.overflow = isVisible ? 'hidden' : '';
+
+    if (!isVisible && inventoryForm) {
+        inventoryForm.reset();
+        if (inventoryCategoryInput) {
+            inventoryCategoryInput.value = 'batchoy';
+        }
+    }
+}
+
+setInventoryModalVisible(false);
+
+function openInventoryModal() {
+    if (!inventoryModal) return;
+    setInventoryModalVisible(true);
+    if (inventoryModalTitle) {
+        inventoryModalTitle.textContent = 'Add New Product';
+    }
+    if (inventoryForm) {
+        inventoryForm.reset();
+        if (inventoryCategoryInput) {
+            inventoryCategoryInput.value = 'batchoy';
+        }
+    }
+}
+
+function closeInventoryModal(event) {
+    if (event && event.preventDefault) {
+        event.preventDefault();
+    }
+    setInventoryModalVisible(false);
+}
+
+window.openInventoryModal = openInventoryModal;
+window.closeInventoryModal = closeInventoryModal;
 
 if (overviewAnalyticsSelect) {
     overviewAnalyticsSelect.addEventListener('change', renderOverviewAnalytics);
@@ -977,6 +1075,27 @@ let completedOrders = [];
 let inventoryData = [];
 let currentMenuCategoryId = null;
 let inventoryEditItemName = null;
+let ignoredPendingOrderNumbers = new Set();
+
+function loadIgnoredPendingOrders() {
+    try {
+        const raw = localStorage.getItem('motasteIgnoredPendingOrders');
+        const parsed = raw ? JSON.parse(raw) : [];
+        ignoredPendingOrderNumbers = new Set(Array.isArray(parsed) ? parsed.map((value) => String(value)) : []);
+    } catch (error) {
+        ignoredPendingOrderNumbers = new Set();
+    }
+}
+
+function saveIgnoredPendingOrders() {
+    localStorage.setItem('motasteIgnoredPendingOrders', JSON.stringify([...ignoredPendingOrderNumbers]));
+}
+
+function ignorePendingOrder(orderNumber) {
+    if (!orderNumber && orderNumber !== 0) return;
+    ignoredPendingOrderNumbers.add(String(orderNumber));
+    saveIgnoredPendingOrders();
+}
 
 function formatCurrency(value) {
     return `₱${value.toLocaleString()}`;
@@ -1027,17 +1146,93 @@ function saveCompletedOrders() {
     localStorage.setItem('motasteCompletedOrders', JSON.stringify(completedOrders));
 }
 
+const inventoryCategoryLabels = {
+    all: 'All',
+    batchoy: 'Batchoy',
+    silog: 'Silog',
+    friedChicken: 'Fried Chicken',
+    breakfast: 'Breakfast',
+    drinks: 'Drinks',
+    specials: 'Specials'
+};
+
+function resolveInventoryCategory(itemName) {
+    const normalizedName = (itemName || '').trim().toLowerCase();
+    if (!normalizedName) return 'specials';
+
+    for (const [key, category] of Object.entries(menuData)) {
+        const match = category.items.some((menuItem) => (menuItem.name || '').toLowerCase() === normalizedName);
+        if (match) return key;
+    }
+
+    return 'specials';
+}
+
+function buildDefaultInventoryFromMenu() {
+    const items = [];
+    const seen = new Set();
+
+    Object.entries(menuData).forEach(([categoryKey, category]) => {
+        category.items.forEach((item) => {
+            if (seen.has(item.name)) return;
+            seen.add(item.name);
+            items.push({
+                name: item.name,
+                price: parsePrice(item.price),
+                stock: 0,
+                status: 'Out of stock',
+                category: categoryKey
+            });
+        });
+    });
+
+    specialFoods.forEach((food) => {
+        if (seen.has(food.name)) return;
+        seen.add(food.name);
+        items.push({
+            name: food.name,
+            price: Number(food.price) || 0,
+            stock: 0,
+            status: 'Out of stock',
+            category: 'specials'
+        });
+    });
+
+    return items;
+}
+
 function initializeInventoryData() {
-    // Start with an empty inventory by default. Staff must add items explicitly.
+    const defaults = buildDefaultInventoryFromMenu();
     try {
-        // remove any previously stored inventory so admin must add items
         const raw = localStorage.getItem('motasteInventoryData');
         if (raw) {
-            localStorage.removeItem('motasteInventoryData');
+            const parsed = JSON.parse(raw);
+            const existing = Array.isArray(parsed) ? parsed : [];
+            const merged = existing.map((item) => ({
+                ...item,
+                category: item.category || resolveInventoryCategory(item.name),
+                price: Number(item.price) || 0,
+                stock: Number(item.stock) || 0,
+                status: item.status || (Number(item.stock) > 0 ? 'In stock' : 'Out of stock')
+            }));
+            const existingNames = new Set(merged.map((item) => item.name));
+
+            defaults.forEach((item) => {
+                if (!existingNames.has(item.name)) {
+                    merged.push(item);
+                    existingNames.add(item.name);
+                }
+            });
+
+            inventoryData = merged;
+            saveInventoryData();
+        } else {
+            inventoryData = defaults;
+            saveInventoryData();
         }
-        inventoryData = [];
     } catch (error) {
-        inventoryData = [];
+        inventoryData = defaults;
+        saveInventoryData();
     }
 
     syncMenuPricesWithInventory();
@@ -1046,6 +1241,93 @@ function initializeInventoryData() {
 function saveInventoryData() {
     localStorage.setItem('motasteInventoryData', JSON.stringify(inventoryData));
 }
+
+function saveCustomMenuData() {
+    const snapshot = {
+        menuData: Object.fromEntries(Object.entries(menuData).map(([categoryKey, category]) => [
+            categoryKey,
+            {
+                title: category.title,
+                items: category.items.map((item) => ({
+                    name: item.name,
+                    price: item.price,
+                    description: item.description || ''
+                }))
+            }
+        ])),
+        specialFoods: specialFoods.map((food) => ({
+            name: food.name,
+            price: food.price,
+            image: food.image
+        }))
+    };
+    localStorage.setItem('motasteCustomMenuData', JSON.stringify(snapshot));
+}
+
+function loadCustomMenuData() {
+    try {
+        const raw = localStorage.getItem('motasteCustomMenuData');
+        if (!raw) return;
+
+        const parsed = JSON.parse(raw);
+        const menuDataSnapshot = parsed.menuData || {};
+        Object.entries(menuDataSnapshot).forEach(([categoryKey, category]) => {
+            if (!menuData[categoryKey]) {
+                menuData[categoryKey] = { title: category.title || categoryKey.toUpperCase(), items: [] };
+            }
+            const seenNames = new Set((menuData[categoryKey].items || []).map((item) => (item.name || '').trim().toLowerCase()));
+            (category.items || []).forEach((item) => {
+                const normalizedName = (item.name || '').trim().toLowerCase();
+                if (!normalizedName || seenNames.has(normalizedName)) return;
+                menuData[categoryKey].items.push({
+                    name: item.name,
+                    price: item.price,
+                    description: item.description || `${item.name} has been added by staff.`
+                });
+                seenNames.add(normalizedName);
+            });
+        });
+
+        if (Array.isArray(parsed.specialFoods)) {
+            const seenSpecialFoods = new Set(specialFoods.map((food) => (food.name || '').trim().toLowerCase()));
+            parsed.specialFoods.forEach((food) => {
+                const normalizedName = (food.name || '').trim().toLowerCase();
+                if (!normalizedName || seenSpecialFoods.has(normalizedName)) return;
+                specialFoods.push({
+                    name: food.name,
+                    price: Number(food.price) || 0,
+                    image: food.image || 'img1.jpg'
+                });
+                seenSpecialFoods.add(normalizedName);
+            });
+        }
+    } catch (error) {
+        console.error('Unable to load custom menu snapshot', error);
+    }
+}
+
+window.addEventListener('storage', (event) => {
+    if (!event.key) return;
+
+    if (event.key === 'motasteCustomMenuData') {
+        loadCustomMenuData();
+        if (currentMenuCategoryId) {
+            showMenuCategory(currentMenuCategoryId);
+        }
+    }
+
+    if (event.key === 'motasteInventoryData') {
+        try {
+            inventoryData = event.newValue ? JSON.parse(event.newValue) : [];
+        } catch (error) {
+            inventoryData = [];
+        }
+        syncMenuPricesWithInventory();
+        if (currentMenuCategoryId) {
+            showMenuCategory(currentMenuCategoryId);
+        }
+    }
+});
 
 function updateCartDisplay() {
     const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -1126,7 +1408,8 @@ function renderOrderNotifications() {
 
     overviewOrderNotificationList.innerHTML = allOrders.map((order) => {
         const isCompleted = completedOrders.some((completed) => completed.id === order.id);
-        const orderItems = order.items.map((item) => `
+        const items = Array.isArray(order.items) ? order.items : [];
+        const orderItems = items.map((item) => `
                 <li>${item.name} x${item.quantity} — ${formatCurrency(item.price * item.quantity)}</li>
             `).join('');
         return `
@@ -1215,35 +1498,207 @@ function syncMenuPricesWithInventory() {
     });
 }
 
+let inventorySelectedCategory = 'all';
+let inventorySearchTerm = '';
+
+function getFilteredInventoryItems() {
+    const term = (inventorySearchTerm || '').trim().toLowerCase();
+    return (inventoryData || []).filter((item) => {
+        const category = item.category || resolveInventoryCategory(item.name);
+        const matchesCategory = inventorySelectedCategory === 'all' || category === inventorySelectedCategory;
+        const matchesSearch = !term || (item.name || '').toLowerCase().includes(term);
+        return matchesCategory && matchesSearch;
+    });
+}
+
 function renderInventoryManagement() {
     const isAdmin = selectedRoleInput && selectedRoleInput.value === 'Admin';
 
-    if (inventoryForm) {
-        inventoryForm.hidden = !isAdmin;
+    if (!isAdmin) {
+        setInventoryModalVisible(false);
+    }
+
+    if (inventoryAddFab) {
+        inventoryAddFab.hidden = !isAdmin;
     }
     if (inventoryAccessNote) {
-        inventoryAccessNote.textContent = isAdmin ? 'Admin mode: add new items or edit existing items.' : 'View-only: admin must sign in to add or edit inventory.';
+        inventoryAccessNote.textContent = isAdmin ? 'Admin mode: use the floating + button to add a new product, or edit any item inline.' : 'View-only: admin must sign in to add or edit inventory.';
     }
 
     if (!inventoryItemsWrapper) return;
-    // only render the items wrapper when there are items
-    if (!inventoryData || !inventoryData.length) {
-        inventoryItemsWrapper.innerHTML = '';
-        inventoryItemsWrapper.hidden = true;
+
+    const filteredItems = getFilteredInventoryItems();
+
+    if (!filteredItems.length) {
+        inventoryItemsWrapper.innerHTML = '<p class="menu-cart-empty">No matching inventory items found.</p>';
+        inventoryItemsWrapper.hidden = false;
         return;
     }
 
     inventoryItemsWrapper.hidden = false;
-    inventoryItemsWrapper.innerHTML = inventoryData.map((item) => `
-        <article class="inventory-item-card">
-            <div>
-                <strong>${item.name}</strong>
-                <p>Price: ${formatCurrency(item.price)}</p>
-                <p>Stock: ${item.stock}</p>
-                <p>Status: ${item.status}</p>
-            </div>
-        </article>
-    `).join('');
+    inventoryItemsWrapper.innerHTML = filteredItems.map((item) => {
+        const editing = inventoryEditItemName === item.name;
+        const category = item.category || resolveInventoryCategory(item.name);
+        const categoryLabel = inventoryCategoryLabels[category] || 'Specials';
+
+        if (!editing) {
+            return `
+                <article class="inventory-item-card">
+                    <div class="inventory-item-main">
+                        <strong>${item.name}</strong>
+                        <p><span class="inventory-item-category">${categoryLabel}</span></p>
+                        <p>Price: ${formatCurrency(item.price)}</p>
+                        <p>Stock: ${item.stock}</p>
+                        <p>Status: ${item.status}</p>
+                        ${item.stock <= 0 ? `<img src="../../outofstock1.png" alt="Out of stock" class="inventory-out-of-stock-image">` : ''}
+                    </div>
+                    <div class="inventory-item-actions">
+                        <button type="button" class="inventory-edit-btn" data-item-name="${item.name}">Edit</button>
+                    </div>
+                </article>
+            `;
+        }
+
+        return `
+            <article class="inventory-item-card is-editing" data-item-name="${item.name}">
+                <div class="inventory-inline-editor">
+                    <label>
+                        Item Name
+                        <input type="text" data-field="name" value="${item.name}">
+                    </label>
+                    <label>
+                        Category
+                        <select data-field="category">
+                            <option value="batchoy" ${category === 'batchoy' ? 'selected' : ''}>Batchoy</option>
+                            <option value="silog" ${category === 'silog' ? 'selected' : ''}>Silog</option>
+                            <option value="friedChicken" ${category === 'friedChicken' ? 'selected' : ''}>Fried Chicken</option>
+                            <option value="breakfast" ${category === 'breakfast' ? 'selected' : ''}>Breakfast</option>
+                            <option value="drinks" ${category === 'drinks' ? 'selected' : ''}>Drinks</option>
+                            <option value="specials" ${category === 'specials' ? 'selected' : ''}>Specials</option>
+                        </select>
+                    </label>
+                    <label>
+                        Price
+                        <input type="number" min="0" step="0.01" data-field="price" value="${item.price}">
+                    </label>
+                    <label>
+                        Stock
+                        <input type="number" min="0" step="1" data-field="stock" value="${item.stock}">
+                    </label>
+                    <label>
+                        Status
+                        <select data-field="status">
+                            <option value="In stock" ${item.status === 'In stock' ? 'selected' : ''}>In stock</option>
+                            <option value="Low stock" ${item.status === 'Low stock' ? 'selected' : ''}>Low stock</option>
+                            <option value="Out of stock" ${item.status === 'Out of stock' ? 'selected' : ''}>Out of stock</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="inventory-item-actions inline-actions">
+                    <button type="button" class="inventory-inline-save" data-item-name="${item.name}">Save</button>
+                    <button type="button" class="inventory-inline-cancel" data-item-name="${item.name}">Cancel</button>
+                    <button type="button" class="inventory-inline-delete" data-item-name="${item.name}">Delete</button>
+                </div>
+            </article>
+        `;
+    }).join('');
+}
+
+function saveMenuCatalogItem(item, previousName = null) {
+    const category = item.category || resolveInventoryCategory(item.name);
+    const priceNumber = Number(item.price) || 0;
+    const normalizedPreviousName = (previousName || item.name || '').trim().toLowerCase();
+
+    if (category === 'specials') {
+        const existingSpecialIndex = specialFoods.findIndex((food) => (food.name || '').trim().toLowerCase() === normalizedPreviousName || (food.name || '').trim().toLowerCase() === (item.name || '').trim().toLowerCase());
+        if (existingSpecialIndex >= 0) {
+            specialFoods[existingSpecialIndex] = {
+                ...specialFoods[existingSpecialIndex],
+                name: item.name,
+                price: priceNumber,
+                image: specialFoods[existingSpecialIndex].image || 'img1.jpg'
+            };
+        } else {
+            specialFoods.push({
+                name: item.name,
+                price: priceNumber,
+                image: 'img1.jpg'
+            });
+        }
+    } else if (menuData[category]) {
+        const existingMenuIndex = menuData[category].items.findIndex((menuItem) => (menuItem.name || '').trim().toLowerCase() === normalizedPreviousName || (menuItem.name || '').trim().toLowerCase() === (item.name || '').trim().toLowerCase());
+        if (existingMenuIndex >= 0) {
+            menuData[category].items[existingMenuIndex] = {
+                ...menuData[category].items[existingMenuIndex],
+                name: item.name,
+                price: `₱${priceNumber.toLocaleString()}`,
+                description: menuData[category].items[existingMenuIndex].description || `${item.name} has been updated by staff.`
+            };
+        } else {
+            menuData[category].items.push({
+                name: item.name,
+                price: `₱${priceNumber.toLocaleString()}`,
+                description: `${item.name} has been added by staff.`
+            });
+        }
+    } else {
+        menuData[category] = {
+            title: category === 'specials' ? 'SPECIALS' : category.toUpperCase(),
+            items: [
+                {
+                    name: item.name,
+                    price: `₱${priceNumber.toLocaleString()}`,
+                    description: `${item.name} has been added by staff.`
+                }
+            ]
+        };
+    }
+
+    saveCustomMenuData();
+}
+
+function removeMenuItemByName(itemName) {
+    const normalizedName = (itemName || '').trim().toLowerCase();
+    if (!normalizedName) return false;
+
+    let removed = false;
+
+    Object.values(menuData).forEach((category) => {
+        const beforeCount = category.items.length;
+        category.items = category.items.filter((menuItem) => (menuItem.name || '').trim().toLowerCase() !== normalizedName);
+        if (category.items.length !== beforeCount) {
+            removed = true;
+        }
+    });
+
+    const specialIndex = specialFoods.findIndex((food) => (food.name || '').trim().toLowerCase() === normalizedName);
+    if (specialIndex >= 0) {
+        specialFoods.splice(specialIndex, 1);
+        removed = true;
+    }
+
+    if (removed) {
+        saveCustomMenuData();
+    }
+
+    return removed;
+}
+
+function deleteInventoryItem(name) {
+    const index = inventoryData.findIndex((item) => item.name === name);
+    if (index < 0) return;
+
+    inventoryData.splice(index, 1);
+    saveInventoryData();
+    removeMenuItemByName(name);
+    syncMenuPricesWithInventory();
+    inventoryEditItemName = null;
+    renderInventoryManagement();
+    renderOverviewInventory();
+    renderSpecialFoods();
+    if (currentMenuCategoryId) {
+        showMenuCategory(currentMenuCategoryId);
+    }
 }
 
 function saveInventoryItem(event) {
@@ -1251,40 +1706,35 @@ function saveInventoryItem(event) {
         event.preventDefault();
     }
 
-    if (!inventoryNameInput || !inventoryPriceInput || !inventoryStockInput || !inventoryStatusInput) return;
+    if (!inventoryNameInput || !inventoryPriceInput || !inventoryStockInput || !inventoryStatusInput || !inventoryCategoryInput) return;
 
     const name = inventoryNameInput.value.trim();
     const price = Number(inventoryPriceInput.value);
     const stock = Number(inventoryStockInput.value);
-    const status = inventoryStatusInput.value;
+    const category = inventoryCategoryInput.value || 'specials';
+    const status = stock <= 0 ? 'Out of stock' : inventoryStatusInput.value;
 
     if (!name || Number.isNaN(price) || Number.isNaN(stock)) {
         return;
     }
 
-    if (inventoryEditItemName) {
-        const editingItem = inventoryData.find((item) => item.name === inventoryEditItemName);
-        if (editingItem) {
-            editingItem.name = name;
-            editingItem.price = price;
-            editingItem.stock = stock;
-            editingItem.status = status;
-        }
-    } else {
-        const existingItem = inventoryData.find((item) => item.name.toLowerCase() === name.toLowerCase());
+    const existingItem = inventoryData.find((item) => item.name.toLowerCase() === name.toLowerCase());
 
-        if (existingItem) {
-            existingItem.price = price;
-            existingItem.stock = stock;
-            existingItem.status = status;
-        } else {
-            inventoryData.push({
-                name,
-                price,
-                stock,
-                status
-            });
-        }
+    if (existingItem) {
+        existingItem.price = price;
+        existingItem.stock = stock;
+        existingItem.status = status;
+        existingItem.category = category;
+        saveMenuCatalogItem(existingItem);
+    } else {
+        inventoryData.push({
+            name,
+            price,
+            stock,
+            status,
+            category
+        });
+        saveMenuCatalogItem({ name, price, stock, status, category });
     }
 
     inventoryEditItemName = null;
@@ -1304,20 +1754,57 @@ function saveInventoryItem(event) {
 
     if (inventoryForm) {
         inventoryForm.reset();
+        inventoryCategoryInput.value = 'batchoy';
     }
+
+    setInventoryModalVisible(false);
 }
 
 function editInventoryItem(name) {
     const item = inventoryData.find((inventoryItem) => inventoryItem.name === name);
-    if (!item || !inventoryForm) return;
+    if (!item) return;
 
     inventoryEditItemName = item.name;
-    inventoryNameInput.value = item.name;
-    inventoryPriceInput.value = item.price;
-    inventoryStockInput.value = item.stock;
-    inventoryStatusInput.value = item.status;
-    if (inventorySaveBtn) {
-        inventorySaveBtn.textContent = 'Update Item';
+    renderInventoryManagement();
+}
+
+function commitInlineInventoryEdit(card) {
+    const itemName = card.dataset.itemName;
+    const previousItem = inventoryData.find((item) => item.name === itemName);
+    if (!previousItem) return;
+
+    const nameInput = card.querySelector('[data-field="name"]');
+    const categoryInput = card.querySelector('[data-field="category"]');
+    const priceInput = card.querySelector('[data-field="price"]');
+    const stockInput = card.querySelector('[data-field="stock"]');
+    const statusInput = card.querySelector('[data-field="status"]');
+
+    if (!nameInput || !categoryInput || !priceInput || !stockInput || !statusInput) return;
+
+    const nextName = nameInput.value.trim();
+    const price = Number(priceInput.value);
+    const stock = Number(stockInput.value);
+    const category = categoryInput.value || 'specials';
+    const status = stock <= 0 ? 'Out of stock' : statusInput.value;
+
+    if (!nextName || Number.isNaN(price) || Number.isNaN(stock)) return;
+
+    previousItem.name = nextName;
+    previousItem.price = price;
+    previousItem.stock = stock;
+    previousItem.status = status;
+    previousItem.category = category;
+
+    saveMenuCatalogItem(previousItem, itemName);
+    saveInventoryData();
+    syncMenuPricesWithInventory();
+    inventoryEditItemName = null;
+    renderInventoryManagement();
+    renderOverviewInventory();
+    renderSpecialFoods();
+
+    if (currentMenuCategoryId) {
+        showMenuCategory(currentMenuCategoryId);
     }
 }
 
@@ -1342,6 +1829,8 @@ function renderOverviewAnalytics() {
 }
 
 function showDashboardSection(section) {
+    setInventoryModalVisible(false);
+
     const sections = [overviewSection, salesSection, pendingOrdersSection, inventorySection, accountManagementSection];
     sections.forEach((el) => {
         if (!el) return;
@@ -1352,9 +1841,11 @@ function showDashboardSection(section) {
 function renderSpecialFoods() {
     if (!specialFoodsList) return;
 
-    specialFoodsList.innerHTML = specialFoods.map((item) => `
+    specialFoodsList.innerHTML = specialFoods.map((item) => {
+        const imageSrc = item.image || 'img1.jpg';
+        return `
         <article class="special-food-card">
-            <img src="${item.image}" alt="${item.name}">
+            <img src="${imageSrc}" alt="${item.name}">
             <div class="special-food-details">
                 <h4>${item.name}</h4>
                 <strong>${formatCurrency(item.price)}</strong>
@@ -1366,7 +1857,8 @@ function renderSpecialFoods() {
                 <span class="special-food-added-message" aria-live="polite"></span>
             </div>
         </article>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function addToCart(item) {
@@ -1429,7 +1921,8 @@ function renderPendingOrders() {
     }
 
     pendingOrdersList.innerHTML = pendingOrders.map((order, index) => {
-        const itemsHtml = order.items.map((item) => `<li>${item.name} x${item.quantity} — ${formatCurrency(item.price * item.quantity)}</li>`).join('');
+        const items = Array.isArray(order.items) ? order.items : [];
+        const itemsHtml = items.map((item) => `<li>${item.name} x${item.quantity} — ${formatCurrency(item.price * item.quantity)}</li>`).join('');
         return `
             <article class="pending-order-card">
                 <h4>Order #${order.orderNumber}</h4>
@@ -1578,6 +2071,9 @@ function confirmOrder() {
 }
 
 function showMenuCategory(categoryId) {
+    loadCustomMenuData();
+    syncMenuPricesWithInventory();
+
     const category = menuData[categoryId];
     if (!category || !menuCategoryScreen || !menuItemsList || !menuCategoryTitle || !menuCategories) return;
 
@@ -1788,6 +2284,41 @@ if (inventoryForm) {
     inventoryForm.addEventListener('submit', saveInventoryItem);
 }
 
+if (inventoryItemsWrapper) {
+    inventoryItemsWrapper.addEventListener('click', (event) => {
+        const editButton = event.target.closest('.inventory-edit-btn');
+        const saveButton = event.target.closest('.inventory-inline-save');
+        const cancelButton = event.target.closest('.inventory-inline-cancel');
+        const deleteButton = event.target.closest('.inventory-inline-delete');
+
+        if (editButton) {
+            const itemName = editButton.dataset.itemName;
+            editInventoryItem(itemName);
+            return;
+        }
+
+        if (saveButton) {
+            const card = saveButton.closest('.inventory-item-card');
+            if (card) {
+                commitInlineInventoryEdit(card);
+            }
+            return;
+        }
+
+        if (cancelButton) {
+            inventoryEditItemName = null;
+            renderInventoryManagement();
+            return;
+        }
+
+        if (deleteButton) {
+            const itemName = deleteButton.dataset.itemName;
+            deleteInventoryItem(itemName);
+            return;
+        }
+    });
+}
+
 if (menuCategories) {
     menuCategories.addEventListener('click', (event) => {
         const button = event.target.closest('.menu-category-btn');
@@ -1962,10 +2493,13 @@ if (overviewOrderNotificationList) {
         if (orderIndex >= 0) {
             const completedOrder = pendingOrders.splice(orderIndex, 1)[0];
             completedOrders.unshift(completedOrder);
+            recalculateSalesAnalytics();
             savePendingOrders();
             saveCompletedOrders();
             renderOrderNotifications();
             renderPendingOrders();
+            updateAnalyticsView();
+            renderOverviewAnalytics();
         }
     });
 }
@@ -1977,11 +2511,15 @@ if (pendingOrdersList) {
         const index = Number(button.dataset.orderIndex);
         if (index >= 0 && index < pendingOrders.length) {
             const completeOrder = pendingOrders.splice(index, 1)[0];
+            ignorePendingOrder(completeOrder.orderNumber || completeOrder.id);
             completedOrders.unshift(completeOrder);
+            recalculateSalesAnalytics();
             savePendingOrders();
             saveCompletedOrders();
             renderPendingOrders();
             renderOrderNotifications();
+            updateAnalyticsView();
+            renderOverviewAnalytics();
         }
     });
 }
@@ -1989,14 +2527,19 @@ if (pendingOrdersList) {
 function initOrders() {
     loadCart();
     loadPendingOrders();
+    loadIgnoredPendingOrders();
     loadCompletedOrders();
+    loadCustomMenuData();
     initializeInventoryData();
+    recalculateSalesAnalytics();
     renderSpecialFoods();
     updateCartDisplay();
     renderPendingOrders();
     renderOrderNotifications();
     renderOverviewInventory();
     renderInventoryManagement();
+    updateAnalyticsView();
+    renderOverviewAnalytics();
     updateLiveClock();
     setInterval(updateLiveClock, 1000);
 }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260724">
     <title>Staff Login - MOTASTE</title>
     <style>
         html,
@@ -236,31 +236,70 @@
                 <span id="inventoryAccessNote" class="inventory-access-note"></span>
             </div>
 
-            <form id="inventoryForm" class="inventory-form">
-                <div class="inventory-form-grid">
-                    <label>
-                        Item Name
-                        <input id="inventoryNameInput" type="text" placeholder="Item name" required>
-                    </label>
-                    <label>
-                        Price
-                        <input id="inventoryPriceInput" type="number" min="0" step="0.01" placeholder="Price" required>
-                    </label>
-                    <label>
-                        Stock
-                        <input id="inventoryStockInput" type="number" min="0" step="1" placeholder="Stock" required>
-                    </label>
-                    <label>
-                        Status
-                        <select id="inventoryStatusInput">
-                            <option value="In stock">In stock</option>
-                            <option value="Low stock">Low stock</option>
-                            <option value="Out of stock">Out of stock</option>
-                        </select>
-                    </label>
+            <div class="inventory-action-row">
+                <button type="button" id="inventoryAddFab" class="inventory-add-fab" aria-label="Add new inventory product" onclick="openInventoryModal()">+</button>
+            </div>
+
+            <div id="inventoryModal" class="inventory-modal" hidden>
+                <div class="inventory-modal-card">
+                    <div class="inventory-modal-header">
+                        <h3 id="inventoryModalTitle">Add New Product</h3>
+                        <button type="button" id="inventoryModalCloseBtn" class="inventory-modal-close" aria-label="Close add product popup" onclick="closeInventoryModal()">×</button>
+                    </div>
+                    <form id="inventoryForm" class="inventory-form">
+                        <div class="inventory-form-grid">
+                            <label>
+                                Item Name
+                                <input id="inventoryNameInput" type="text" placeholder="Item name" required>
+                            </label>
+                            <label>
+                                Category
+                                <select id="inventoryCategoryInput">
+                                    <option value="batchoy">Batchoy</option>
+                                    <option value="silog">Silog</option>
+                                    <option value="friedChicken">Fried Chicken</option>
+                                    <option value="breakfast">Breakfast</option>
+                                    <option value="drinks">Drinks</option>
+                                    <option value="specials">Specials</option>
+                                </select>
+                            </label>
+                            <label>
+                                Price
+                                <input id="inventoryPriceInput" type="number" min="0" step="0.01" placeholder="Price" required>
+                            </label>
+                            <label>
+                                Stock
+                                <input id="inventoryStockInput" type="number" min="0" step="1" placeholder="Stock" required>
+                            </label>
+                            <label>
+                                Status
+                                <select id="inventoryStatusInput">
+                                    <option value="In stock">In stock</option>
+                                    <option value="Low stock">Low stock</option>
+                                    <option value="Out of stock">Out of stock</option>
+                                </select>
+                            </label>
+                        </div>
+                        <button type="submit" id="inventorySaveBtn" class="menu-place-order-btn">Save Inventory Item</button>
+                    </form>
                 </div>
-                <button type="submit" id="inventorySaveBtn" class="menu-place-order-btn">Save Inventory Item</button>
-            </form>
+            </div>
+
+            <div class="inventory-toolbar">
+                <label class="inventory-search-field">
+                    <span>Search products</span>
+                    <input id="inventorySearchInput" type="search" placeholder="Search by product name">
+                </label>
+                <div id="inventoryCategoryTabs" class="inventory-category-tabs">
+                    <button type="button" class="inventory-category-tab active" data-category="all">All</button>
+                    <button type="button" class="inventory-category-tab" data-category="batchoy">Batchoy</button>
+                    <button type="button" class="inventory-category-tab" data-category="silog">Silog</button>
+                    <button type="button" class="inventory-category-tab" data-category="friedChicken">Fried Chicken</button>
+                    <button type="button" class="inventory-category-tab" data-category="breakfast">Breakfast</button>
+                    <button type="button" class="inventory-category-tab" data-category="drinks">Drinks</button>
+                    <button type="button" class="inventory-category-tab" data-category="specials">Specials</button>
+                </div>
+            </div>
 
             <div id="inventoryItemsWrapper" class="inventory-items-wrapper" hidden></div>
         </div>
@@ -301,7 +340,7 @@
                 <button type="button" class="role-tab" role="tab" data-role="Cashier" onclick="selectRole('Cashier')">Cashier</button>
                 <button type="button" class="role-tab" role="tab" data-role="Inventory Manager" onclick="selectRole('Inventory Manager')">Inventory Manager</button>
             </div>
-            <form id="staffLoginForm" action="login.php" method="POST">
+            <form id="staffLoginForm" method="POST">
                 <div class="login-fields" id="loginFields" hidden>
                     <input type="hidden" name="role" id="selectedRole" value="">
 
@@ -322,7 +361,7 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=20260724"></script>
     <script src="staff-auth.js"></script>
     <script>
         window.selectRole = window.selectRole || function(role) {
